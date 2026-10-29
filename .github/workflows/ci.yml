@@ -1,0 +1,260 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+env:
+  # the branches of the Pothos core and of PothosBlocks that soapy builds against
+  POTHOS_CORE_REPO: markvin/PothosCore
+  POTHOS_CORE_REF: pothos2
+  POTHOS_BLOCKS_REPO: markvin/PothosBlocks
+  POTHOS_BLOCKS_REF: pothos2
+  # SoapySDR is not in Conan: build it from the upstream source at this tag
+  SOAPYSDR_REPO: pothosware/SoapySDR
+  SOAPYSDR_REF: soapy-sdr-0.9.0
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: linux-gcc
+            os: ubuntu-24.04
+            cc: gcc-14
+            cxx: g++-14
+            config: Debug
+            extra: "-DSOAPY_WARNINGS_AS_ERRORS=ON"
+          - name: linux-clang
+            os: ubuntu-24.04
+            cc: clang-18
+            cxx: clang++-18
+            config: Release
+            extra: "-DSOAPY_WARNINGS_AS_ERRORS=ON"
+          - name: macos
+            # temporary Intel (x86_64) runner, the same as the core
+            os: macos-15-intel
+            cc: clang
+            cxx: clang++
+            config: Debug
+            extra: "-DCMAKE_OSX_DEPLOYMENT_TARGET=13.3"
+            core_extra: "-DCMAKE_OSX_DEPLOYMENT_TARGET=13.3"
+          - name: windows
+            os: windows-latest
+            cc: cl
+            cxx: cl
+            config: Release
+            extra: ""
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ env.POTHOS_CORE_REPO }}
+          ref: ${{ env.POTHOS_CORE_REF }}
+          path: pothos-core
+
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ env.POTHOS_BLOCKS_REPO }}
+          ref: ${{ env.POTHOS_BLOCKS_REF }}
+          path: pothos-blocks
+
+      # the build must never download anything
+      - name: No network access in the build
+        shell: bash
+        run: |
+          if grep -rnE 'file\s*\(\s*DOWNLOAD|FetchContent|ExternalProject' --include=CMakeLists.txt --include='*.cmake' .  --exclude-dir=pothos-core --exclude-dir=pothos-blocks; then
+            echo "build scripts must not download anything"; exit 1
+          fi
+
+      - name: Install Ninja (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y ninja-build
+
+      - name: Install Ninja (macOS)
+        if: runner.os == 'macOS'
+        run: brew install ninja
+
+      - name: MSVC environment
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
+
+      # the dependencies of the core, the blocks and soapy (json) come from
+      # Conan 2; CMake only gets the toolchain file. CC/CXX select the compiler.
+      - name: Dependencies (Conan)
+        shell: bash
+        env:
+          CC: ${{ matrix.cc }}
+          CXX: ${{ matrix.cxx }}
+        run: |
+          pipx install "conan>=2,<3"
+          conan profile detect --force
+          for dir in pothos-core pothos-blocks .; do
+            conan install $dir --output-folder=$dir/build/conan \
+              -s build_type=${{ matrix.config }} -s compiler.cppstd=23 --build=missing \
+              -c tools.cmake.cmaketoolchain:generator=Ninja
+          done
+
+      # a path that CMake understands on Windows too (pwd -W: D:/a/...);
+      # Windows finds the SoapySDR DLL on PATH
+      - name: SoapySDR prefix
+        shell: bash
+        run: |
+          prefix="$(pwd -W 2>/dev/null || pwd)/soapysdr-install"
+          echo "SOAPYSDR_PREFIX=$prefix" >> "$GITHUB_ENV"
+          if [ "$RUNNER_OS" = "Windows" ]; then cygpath -w "$prefix/bin" >> "$GITHUB_PATH"; fi
+
+      - name: Restore SoapySDR
+        id: soapysdr-cache
+        uses: actions/cache@v4
+        with:
+          path: soapysdr-install
+          key: soapysdr-${{ env.SOAPYSDR_REF }}-${{ matrix.name }}-${{ matrix.config }}
+
+      - name: Check out SoapySDR
+        if: steps.soapysdr-cache.outputs.cache-hit != 'true'
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.SOAPYSDR_REPO }}
+          ref: ${{ env.SOAPYSDR_REF }}
+          path: soapysdr-src
+
+      # only the library and the headers: no language bindings, apps, docs, tests
+      - name: Build and install SoapySDR
+        if: steps.soapysdr-cache.outputs.cache-hit != 'true'
+        shell: bash
+        run: |
+          cmake -S soapysdr-src -B soapysdr-src/build -G Ninja \
+            -DCMAKE_BUILD_TYPE=${{ matrix.config }} \
+            -DCMAKE_C_COMPILER=${{ matrix.cc }} \
+            -DCMAKE_CXX_COMPILER=${{ matrix.cxx }} \
+            -DCMAKE_INSTALL_PREFIX="$SOAPYSDR_PREFIX" \
+            -DENABLE_APPS=OFF -DENABLE_DOCS=OFF -DENABLE_TESTS=OFF \
+            -DENABLE_PYTHON2=OFF -DENABLE_PYTHON3=OFF -DENABLE_CSHARP=OFF -DENABLE_LUAJIT=OFF \
+            ${{ matrix.core_extra }}
+          cmake --build soapysdr-src/build
+          cmake --install soapysdr-src/build
+
+      - name: Build and install the core
+        shell: bash
+        run: |
+          prefix="$(pwd -W 2>/dev/null || pwd)/pothos-install"
+          echo "POTHOS_PREFIX=$prefix" >> "$GITHUB_ENV"
+          cmake -S pothos-core -B pothos-core/build -G Ninja \
+            -DCMAKE_BUILD_TYPE=${{ matrix.config }} \
+            -DCMAKE_C_COMPILER=${{ matrix.cc }} \
+            -DCMAKE_CXX_COMPILER=${{ matrix.cxx }} \
+            -DCMAKE_TOOLCHAIN_FILE=build/conan/conan_toolchain.cmake \
+            -DCMAKE_INSTALL_PREFIX="$prefix" \
+            -DPOTHOS_BUILD_TESTS=OFF -DPOTHOS_BUILD_DOCS=OFF \
+            ${{ matrix.core_extra }}
+          cmake --build pothos-core/build
+          cmake --install pothos-core/build
+
+      # the soapy self-tests use blocks of PothosBlocks: install it into the core prefix
+      - name: Build and install PothosBlocks
+        shell: bash
+        run: |
+          cmake -S pothos-blocks -B pothos-blocks/build -G Ninja \
+            -DCMAKE_BUILD_TYPE=${{ matrix.config }} \
+            -DCMAKE_C_COMPILER=${{ matrix.cc }} \
+            -DCMAKE_CXX_COMPILER=${{ matrix.cxx }} \
+            -DCMAKE_TOOLCHAIN_FILE=build/conan/conan_toolchain.cmake \
+            -DCMAKE_PREFIX_PATH="$POTHOS_PREFIX" \
+            -DBLOCKS_BUILD_TESTS=OFF \
+            ${{ matrix.core_extra }}
+          cmake --build pothos-blocks/build
+          cmake --install pothos-blocks/build
+
+      - name: Configure
+        shell: bash
+        run: >
+          cmake -S . -B build -G Ninja
+          -DCMAKE_BUILD_TYPE=${{ matrix.config }}
+          -DCMAKE_C_COMPILER=${{ matrix.cc }}
+          -DCMAKE_CXX_COMPILER=${{ matrix.cxx }}
+          -DCMAKE_TOOLCHAIN_FILE=build/conan/conan_toolchain.cmake
+          -DCMAKE_PREFIX_PATH="$POTHOS_PREFIX;$SOAPYSDR_PREFIX"
+          ${{ matrix.extra }}
+
+      # keep going after the first error to report all of them in one run
+      - name: Build
+        run: cmake --build build -- -k 0
+
+      - name: Test
+        #-V: the output of every self-test (passed ones too)
+        run: ctest --test-dir build --output-on-failure -V
+
+      # SoapySDR is not in a system directory: the staged modules must have
+      # an RPATH to the SoapySDR library directory
+      - name: Check the install RPATH
+        if: matrix.name == 'linux-gcc'
+        shell: bash
+        run: |
+          module=$(find build/stage -name libSoapySupport.so)
+          readelf -d "$module" | grep -E 'RUNPATH|RPATH'
+          readelf -d "$module" | grep -E 'RUNPATH|RPATH' | grep -F "$SOAPYSDR_PREFIX/lib"
+
+  linux-system:
+    name: linux-system (Arch packages)
+    runs-on: ubuntu-24.04
+    container:
+      image: archlinux:latest
+      #an init process as PID 1 reaps orphans (the same as the core CI)
+      options: --init
+    steps:
+      #asio and xsimd are for the core and the blocks, soapysdr is for soapy.
+      #Arch has SoapySDR 0.8 and GCC 15 or higher: this job checks the
+      #<ciso646> workaround with -Werror.
+      - name: Install the toolchain and the dependencies
+        run: pacman -Syu --noconfirm base-devel cmake ninja git asio nlohmann-json xsimd soapysdr
+
+      - uses: actions/checkout@v4
+
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ env.POTHOS_CORE_REPO }}
+          ref: ${{ env.POTHOS_CORE_REF }}
+          path: pothos-core
+
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ env.POTHOS_BLOCKS_REPO }}
+          ref: ${{ env.POTHOS_BLOCKS_REF }}
+          path: pothos-blocks
+
+      - name: Build and install the core
+        run: |
+          cmake -S pothos-core -B pothos-core/build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DCMAKE_INSTALL_PREFIX="$PWD/pothos-install" \
+            -DPOTHOS_BUILD_TESTS=OFF -DPOTHOS_BUILD_DOCS=OFF
+          cmake --build pothos-core/build
+          cmake --install pothos-core/build
+
+      - name: Build and install PothosBlocks
+        run: |
+          cmake -S pothos-blocks -B pothos-blocks/build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DCMAKE_PREFIX_PATH="$PWD/pothos-install" \
+            -DBLOCKS_BUILD_TESTS=OFF
+          cmake --build pothos-blocks/build
+          cmake --install pothos-blocks/build
+
+      - name: Configure
+        run: >
+          cmake -S . -B build -G Ninja
+          -DCMAKE_BUILD_TYPE=Debug
+          -DCMAKE_PREFIX_PATH="$PWD/pothos-install"
+          -DSOAPY_WARNINGS_AS_ERRORS=ON
+
+      - name: Build
+        run: cmake --build build -- -k 0
+
+      - name: Test
+        run: ctest --test-dir build --output-on-failure -V
