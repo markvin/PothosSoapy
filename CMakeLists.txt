@@ -58,6 +58,21 @@ message(STATUS "SoapySDR: ${SoapySDR_VERSION} (${SoapySDR_DIR})")
 add_library(soapy_json INTERFACE)
 target_link_libraries(soapy_json INTERFACE nlohmann_json::nlohmann_json)
 
+#a SoapySDR outside the system dirs (built from source by the user or by
+#CI): the installed modules must find the SoapySDR library at run time.
+#Add only the SoapySDR library dir to the install RPATH, not all link dirs
+#(the core prefix is known to the loader). On Windows the SoapySDR bin
+#dir is on PATH.
+set(SOAPY_SDR_LIBDIR)
+get_target_property(soapy_sdr_location SoapySDR LOCATION)
+if(soapy_sdr_location)
+    get_filename_component(soapy_sdr_libdir "${soapy_sdr_location}" DIRECTORY)
+    if(UNIX AND NOT soapy_sdr_libdir IN_LIST CMAKE_CXX_IMPLICIT_LINK_DIRECTORIES)
+        set(SOAPY_SDR_LIBDIR "${soapy_sdr_libdir}")
+        message(STATUS "PothosSoapy: install RPATH ${SOAPY_SDR_LIBDIR}")
+    endif()
+endif()
+
 ########################################################################
 # Modules
 ########################################################################
@@ -103,6 +118,9 @@ function(soapy_module)
     set_target_properties(${SOAPY_TARGET} PROPERTIES CXX_EXTENSIONS OFF)
     target_include_directories(${SOAPY_TARGET} PRIVATE ${PROJECT_SOURCE_DIR})
     soapy_warnings(${SOAPY_TARGET})
+    if(SOAPY_SDR_LIBDIR)
+        set_property(TARGET ${SOAPY_TARGET} APPEND PROPERTY INSTALL_RPATH "${SOAPY_SDR_LIBDIR}")
+    endif()
     foreach(test IN LISTS SOAPY_TESTS)
         set_property(GLOBAL APPEND PROPERTY POTHOS_SOAPY_TESTS /soapy/tests/${test})
     endforeach()
@@ -147,6 +165,7 @@ soapy_module(
         EnumerateCache.cpp
         tests/TestDevice.cpp
         tests/TestSoapyBlocks.cpp
+        tests/DeviceTest.cpp
     DOC_SOURCES
         DemoController.cpp
         ${PROJECT_BINARY_DIR}/SoapySourceDesc.hpp
@@ -189,4 +208,23 @@ if(SOAPY_BUILD_TESTS)
     set_tests_properties(soapy.selftests PROPERTIES
         FIXTURES_REQUIRED soapy_stage
         TIMEOUT ${SOAPY_SELFTEST_TIMEOUT})
+
+    #a manual check with a real device (not in CI), for example
+    #-DSOAPY_TEST_DEVICE=driver=rtlsdr: receive for about one second
+    set(SOAPY_TEST_DEVICE "" CACHE STRING "SoapySDR device args for the soapy.device test (empty: no test)")
+    if(SOAPY_TEST_DEVICE)
+        add_test(NAME soapy.device
+            COMMAND ${CMAKE_COMMAND}
+                -DPREFIX=${POTHOS_ROOT}
+                -DTEST_HOME_DIR=${PROJECT_BINARY_DIR}/test-home
+                -DBINDIR=bin
+                -DLIBDIR=${CMAKE_INSTALL_LIBDIR}
+                -DPLUGIN_PATH=${SOAPY_STAGE_DIR}/${CMAKE_INSTALL_LIBDIR}/Pothos/modules${POTHOS_ABI_VERSION}
+                -DTEST_PATH=/soapy/device_tests/test_source
+                -P ${PROJECT_SOURCE_DIR}/cmake/PothosRunSelfTests.cmake)
+        set_tests_properties(soapy.device PROPERTIES
+            FIXTURES_REQUIRED soapy_stage
+            ENVIRONMENT "SOAPY_TEST_DEVICE=${SOAPY_TEST_DEVICE}"
+            TIMEOUT 60)
+    endif()
 endif()
