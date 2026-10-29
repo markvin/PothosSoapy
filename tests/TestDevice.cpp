@@ -5,8 +5,10 @@
 #include <SoapySDR/Formats.hpp>
 #include <SoapySDR/Time.hpp>
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <condition_variable>
+#include <cstdint>
 #include <cstring>
 #include <deque>
 #include <stdexcept>
@@ -33,8 +35,9 @@ struct TestStream
     long long ticks;
 };
 
-//SoapySDR::Registry takes function pointers: the scope sets this state
-static DriverState *activeState = nullptr;
+//SoapySDR::Registry takes function pointers: the scope sets this state.
+//Find can run on other threads (EnumerateCache), so the pointer is atomic.
+static std::atomic<DriverState *> activeState{nullptr};
 
 static SoapySDR::KwargsList findTestDevice(const SoapySDR::Kwargs &args)
 {
@@ -49,10 +52,11 @@ static SoapySDR::KwargsList findTestDevice(const SoapySDR::Kwargs &args)
 
 static SoapySDR::Device *makeTestDevice(const SoapySDR::Kwargs &)
 {
-    if (activeState == nullptr) throw std::runtime_error("the soapy test driver is not registered");
-    auto device = new TestDevice(*activeState);
-    std::lock_guard<std::mutex> lock(activeState->mutex);
-    activeState->lastDevice = device;
+    auto state = activeState.load();
+    if (state == nullptr) throw std::runtime_error("the soapy test driver is not registered");
+    auto device = new TestDevice(*state);
+    std::lock_guard<std::mutex> lock(state->mutex);
+    state->lastDevice = device;
     return device;
 }
 
@@ -75,8 +79,11 @@ static void checkOption(const std::vector<std::string> &options, const std::stri
 ScopedTestDriver::ScopedTestDriver(void):
     _state(new DriverState())
 {
-    if (activeState != nullptr) throw std::logic_error("the soapy test driver is already registered");
-    activeState = _state.get();
+    DriverState *expected = nullptr;
+    if (not activeState.compare_exchange_strong(expected, _state.get()))
+    {
+        throw std::logic_error("the soapy test driver is already registered");
+    }
     _registry.reset(new SoapySDR::Registry(DriverName, &findTestDevice, &makeTestDevice, SOAPY_SDR_ABI_VERSION));
 }
 
@@ -163,13 +170,13 @@ SoapySDR::Stream *TestDevice::setupStream(const int direction, const std::string
     const std::vector<size_t> &channels, const SoapySDR::Kwargs &)
 {
     checkOption(this->getStreamFormats(direction, 0), format, "stream format");
-    auto stream = new TestStream();
+    std::unique_ptr<TestStream> stream(new TestStream());
     stream->direction = direction;
     stream->channels = channels.empty()? std::vector<size_t>{0} : channels;
     for (const auto chan : stream->channels) checkChannel(chan);
     stream->elemSize = SoapySDR::formatToSize(format);
     stream->ticks = 0;
-    return reinterpret_cast<SoapySDR::Stream *>(stream);
+    return reinterpret_cast<SoapySDR::Stream *>(stream.release());
 }
 
 void TestDevice::closeStream(SoapySDR::Stream *stream)

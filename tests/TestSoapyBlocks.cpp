@@ -185,23 +185,54 @@ static void testSettings(const std::string &path, const int direction, const std
     POTHOS_TEST_EQUALV(block.call<std::vector<std::string>>("getAntennas0"), antennas);
     block.call("setAntenna", antennas[1]);
     POTHOS_TEST_EQUAL(block.call<std::string>("getAntenna0"), antennas[1]);
+    POTHOS_TEST_EQUAL(device->getAntenna(direction, 0), antennas[1]);
 
     block.call("setBandwidth", 1e6);
     POTHOS_TEST_EQUAL(block.call<double>("getBandwidth0"), 1e6);
+    POTHOS_TEST_EQUAL(device->getBandwidth(direction, 0), 1e6);
 
     block.call("setDCOffsetMode", true);
     POTHOS_TEST_TRUE(block.call<bool>("getDCOffsetMode0"));
+    POTHOS_TEST_TRUE(device->getDCOffsetMode(direction, 0));
 
     block.call("setClockSource", std::string("external"));
     POTHOS_TEST_EQUAL(block.call<std::string>("getClockSource"), "external");
+    POTHOS_TEST_EQUAL(device->getClockSource(), "external");
+
+    block.call("setTimeSource", std::string("external"));
+    POTHOS_TEST_EQUAL(block.call<std::string>("getTimeSource"), "external");
+    POTHOS_TEST_EQUAL(device->getTimeSource(), "external");
+
+    block.call("setClockRate", 20e6);
+    POTHOS_TEST_EQUAL(block.call<double>("getClockRate"), 20e6);
+    POTHOS_TEST_EQUAL(device->getMasterClockRate(), 20e6);
+
+    block.call("setHardwareTime", 123456789LL);
+    POTHOS_TEST_EQUAL(block.call<long long>("getHardwareTime"), 123456789LL);
+    POTHOS_TEST_EQUAL(device->getHardwareTime(""), 123456789LL);
+
+    POTHOS_TEST_EQUALV(block.call<std::vector<std::string>>("getSensors"), device->listSensors());
+    POTHOS_TEST_EQUAL(block.call("getSensor", std::string("locked")).convert<std::string>(), "true");
 
     block.call("setGlobalSetting", std::string("test_key"), Pothos::Object(std::string("test_value")));
     POTHOS_TEST_EQUAL(device->readSetting("test_key"), "test_value");
 
-    //an error of the driver goes to the caller
+    block.call("setChannelSetting", std::string("chan_key"), Pothos::Object(std::string("chan_value")));
+    POTHOS_TEST_EQUAL(device->readSetting(direction, 0, "chan_key"), "chan_value");
+
+    //an error of the driver goes to the caller with its message
     Pothos::ObjectMap badGain;
     badGain[Pothos::Object(std::string("NO_SUCH_ELEMENT"))] = Pothos::Object(1.0);
-    POTHOS_TEST_THROWS(block.call("setGain", badGain), std::exception);
+    std::string error;
+    try
+    {
+        block.call("setGain", badGain);
+    }
+    catch (const Pothos::Exception &ex)
+    {
+        error = ex.displayText();
+    }
+    POTHOS_TEST_TRUE(error.find("NO_SUCH_ELEMENT") != std::string::npos);
 }
 
 POTHOS_TEST_BLOCK("/soapy/tests", test_settings)

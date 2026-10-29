@@ -101,7 +101,10 @@ ctest --test-dir build -R soapy.device -V
 
 The test `soapy.device` receives from `/soapy/source` for approximately
 one second. It prints the number of samples and the rate. It fails when no
-samples come. Without `SOAPY_TEST_DEVICE`, this test does not exist.
+samples come. Without `SOAPY_TEST_DEVICE`, the CTest test `soapy.device`
+does not exist. Its self-test `/soapy/device_tests/test_source` is always
+in the module: without the variable `SOAPY_TEST_DEVICE`, it prints a
+message and passes. Thus `PothosUtil --self-tests` needs no device.
 
 ## Documentation
 

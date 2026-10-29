@@ -109,12 +109,14 @@ jobs:
           echo "SOAPYSDR_PREFIX=$prefix" >> "$GITHUB_ENV"
           if [ "$RUNNER_OS" = "Windows" ]; then cygpath -w "$prefix/bin" >> "$GITHUB_PATH"; fi
 
+      # the key has a hash of this file: a change of the SoapySDR build
+      # options makes a new cache
       - name: Restore SoapySDR
         id: soapysdr-cache
-        uses: actions/cache@v4
+        uses: actions/cache/restore@v4
         with:
           path: soapysdr-install
-          key: soapysdr-${{ env.SOAPYSDR_REF }}-${{ matrix.name }}-${{ matrix.config }}
+          key: soapysdr-${{ env.SOAPYSDR_REF }}-${{ matrix.name }}-${{ matrix.config }}-${{ hashFiles('.github/workflows/ci.yml') }}
 
       - name: Check out SoapySDR
         if: steps.soapysdr-cache.outputs.cache-hit != 'true'
@@ -139,6 +141,15 @@ jobs:
             ${{ matrix.core_extra }}
           cmake --build soapysdr-src/build
           cmake --install soapysdr-src/build
+
+      # save now, not at the end of the job: a failed test of soapy must not
+      # make the next run build SoapySDR again
+      - name: Save SoapySDR
+        if: steps.soapysdr-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: soapysdr-install
+          key: ${{ steps.soapysdr-cache.outputs.cache-primary-key }}
 
       - name: Build and install the core
         shell: bash
@@ -189,6 +200,15 @@ jobs:
       - name: Test
         #-V: the output of every self-test (passed ones too)
         run: ctest --test-dir build --output-on-failure -V
+
+      # SoapySDR 0.9 has no <ciso646>: the workaround must be off
+      - name: Check that the <ciso646> workaround is off
+        if: matrix.name == 'linux-gcc'
+        shell: bash
+        run: |
+          if grep -q -e '-Wno-cpp' -e '-Wno-#warnings' build/build.ninja; then
+            echo "the <ciso646> workaround is on with SoapySDR $SOAPYSDR_REF"; exit 1
+          fi
 
       # SoapySDR is not in a system directory: the staged modules must have
       # an RPATH to the SoapySDR library directory
