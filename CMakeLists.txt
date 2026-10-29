@@ -145,10 +145,18 @@ soapy_module(
         SoapyInfo.cpp
         BlockThread.cpp
         EnumerateCache.cpp
+        tests/TestDevice.cpp
+        tests/TestSoapyBlocks.cpp
     DOC_SOURCES
         DemoController.cpp
         ${PROJECT_BINARY_DIR}/SoapySourceDesc.hpp
         ${PROJECT_BINARY_DIR}/SoapySinkDesc.hpp
+    TESTS
+        test_driver_registration
+        test_loopback_cf32
+        test_loopback_cs16
+        test_loopback_two_channels
+        test_settings
 )
 
 add_subdirectory(utility)
