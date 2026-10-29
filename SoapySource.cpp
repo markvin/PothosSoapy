@@ -3,6 +3,7 @@
 
 #include "SoapyBlock.hpp"
 #include <SoapySDR/Errors.hpp>
+#include <algorithm> //min
 
 class SDRSource : public SoapyBlock
 {

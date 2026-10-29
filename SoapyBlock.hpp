@@ -8,7 +8,13 @@
 #include <thread>
 #include <mutex>
 #include <atomic>
+#include <complex>
 #include <condition_variable>
+#include <exception>
+#include <map>
+#include <string>
+#include <utility>
+#include <vector>
 
 class SoapyBlock : public Pothos::Block
 {
