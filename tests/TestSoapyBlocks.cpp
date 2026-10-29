@@ -8,6 +8,7 @@
 #include <Pothos/Plugin.hpp>
 #include <SoapySDR/Device.hpp>
 #include <nlohmann/json.hpp>
+#include <algorithm>
 #include <chrono>
 #include <cstring>
 #include <iostream>
@@ -186,4 +187,14 @@ POTHOS_TEST_BLOCK("/soapy/tests", test_settings)
 {
     testSettings("/soapy/source", SOAPY_SDR_RX, "RX");
     testSettings("/soapy/sink", SOAPY_SDR_TX, "TX");
+}
+
+/***********************************************************************
+ * The demo controller is only a demonstration: make and delete it
+ **********************************************************************/
+POTHOS_TEST_BLOCK("/soapy/tests", test_demo_controller)
+{
+    auto controller = Pothos::BlockRegistry::make("/soapy/demo_controller", "complex_float32");
+    const auto inputs = controller.call<std::vector<std::string>>("inputPortNames");
+    POTHOS_TEST_TRUE(std::find(inputs.begin(), inputs.end(), "0") != inputs.end());
 }

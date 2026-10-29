@@ -157,6 +157,7 @@ soapy_module(
         test_loopback_cs16
         test_loopback_two_channels
         test_settings
+        test_demo_controller
 )
 
 add_subdirectory(utility)

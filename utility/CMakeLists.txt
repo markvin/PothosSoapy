@@ -9,6 +9,10 @@ soapy_module(
         RandomDropper.cpp
         TxBurstTimer.cpp
         TestConverter.cpp
+        TestUtilityBlocks.cpp
     TESTS
         test_converter
+        test_channel_aligner
+        test_random_dropper
+        test_tx_burst_timer
 )
