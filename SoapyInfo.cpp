@@ -6,7 +6,7 @@
 #include <SoapySDR/Modules.hpp>
 #include <SoapySDR/Registry.hpp>
 #include <SoapySDR/Device.hpp>
-#include <json.hpp>
+#include <nlohmann/json.hpp>
 
 using json = nlohmann::json;
 

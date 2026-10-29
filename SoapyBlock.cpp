@@ -6,11 +6,11 @@
 #include <SoapySDR/Version.hpp>
 #include <SoapySDR/Errors.hpp>
 #include <SoapySDR/Logger.hpp>
-#include <Poco/Format.h>
 #include <cassert>
 #include <chrono>
 #include <unordered_map>
-#include <json.hpp>
+#include <format>
+#include <nlohmann/json.hpp>
 
 using json = nlohmann::json;
 
@@ -21,13 +21,12 @@ using json = nlohmann::json;
 #endif
 
 #define check_device_ptr() {if (_device == nullptr) \
-    throw Pothos::NullPointerException(Poco::format("%s - device not setup!", current_func()));}
+    throw Pothos::NullPointerException(std::format("{} - device not setup!", current_func()));}
 
 #define check_stream_ptr() {if (_stream == nullptr) \
-    throw Pothos::NullPointerException(Poco::format("%s - stream not setup!", current_func()));}
+    throw Pothos::NullPointerException(std::format("{} - stream not setup!", current_func()));}
 
 SoapyBlock::SoapyBlock(const int direction, const Pothos::DType &dtype, const std::vector<size_t> &chs):
-    _logger(Poco::Logger::get("SoapyBlock")),
     _backgrounding(false),
     _activateWaits(false),
     _eventSquash(false),
@@ -42,7 +41,7 @@ SoapyBlock::SoapyBlock(const int direction, const Pothos::DType &dtype, const st
 {
     assert(not _channels.empty());
     if (SoapySDR::getABIVersion() != SOAPY_SDR_ABI_VERSION) throw Pothos::Exception("SoapyBlock::make()",
-        Poco::format("Failed ABI check. Pothos SDR %s. Soapy SDR %s. Rebuild the module.",
+        std::format("Failed ABI check. Pothos SDR {}. Soapy SDR {}. Rebuild the module.",
         std::string(SOAPY_SDR_ABI_VERSION), SoapySDR::getABIVersion()));
 
     //hooks for overlay
@@ -837,7 +836,7 @@ void SoapyBlock::setCommandTime(const long long timeNs)
     if (not once)
     {
         once = true;
-        poco_warning(_logger, "SoapyBlock::setCommandTime() deprecated, use setHardwareTime()");
+        POTHOS_LOG_WARNING("SoapyBlock", "SoapyBlock::setCommandTime() deprecated, use setHardwareTime()");
     }
     return _device->setCommandTime(timeNs);
 }

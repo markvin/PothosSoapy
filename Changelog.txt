@@ -1,5 +1,19 @@
 This this the changelog file for the Pothos SoapySDR toolkit.
 
+Release 0.6.0 (pending)
+==========================
+
+- Port to the modernized Pothos core (branch pothos2)
+- Remove Poco: the SoapySDR log goes to the Pothos logger, std::format
+- SoapySDR 0.8 or higher; a missing SoapySDR or nlohmann_json stops the configure step
+- CMake 3.25 or higher
+- Ignore the <ciso646> #warning of SoapySDR older than 0.9 (GCC 15 or higher)
+- Install RPATH to the SoapySDR library directory when SoapySDR is not in a system directory
+- Add self-tests with a SoapySDR test driver (no hardware necessary)
+- Add the optional device test soapy.device (-DSOAPY_TEST_DEVICE=...)
+- Add CI for Linux, macOS and Windows
+- Remove the debian packaging
+
 Release 0.5.1 (2020-07-19)
 ==========================
 
