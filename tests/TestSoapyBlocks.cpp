@@ -10,6 +10,7 @@
 #include <nlohmann/json.hpp>
 #include <algorithm>
 #include <chrono>
+#include <cstdint>
 #include <cstring>
 #include <iostream>
 #include <thread>
@@ -71,7 +72,8 @@ static void testLoopback(const std::string &dtype, const std::vector<size_t> &ch
     source.call("setupDevice", testDeviceArgs());
     source.call("setupStream", Pothos::ObjectKwargs());
 
-    //known and different data for each channel
+    //known and different data for each channel: a 32-bit counter that does
+    //not repeat, so a reorder or a copy of a chunk changes the data
     std::vector<Pothos::Proxy> feeders, collectors;
     std::vector<Pothos::BufferChunk> sent;
     for (size_t i = 0; i < channels.size(); i++)
@@ -79,9 +81,8 @@ static void testLoopback(const std::string &dtype, const std::vector<size_t> &ch
         feeders.push_back(Pothos::BlockRegistry::make("/blocks/feeder_source", dtype));
         collectors.push_back(Pothos::BlockRegistry::make("/blocks/collector_sink", dtype));
         Pothos::BufferChunk buff(dtype, numElems);
-        auto bytes = buff.as<unsigned char *>();
-        for (size_t j = 0; j < buff.length; j++) bytes[j] = static_cast<unsigned char>(j*31 + i*7 + 1);
-        feeders.back().call("feedBuffer", buff);
+        auto words = buff.as<uint32_t *>();
+        for (size_t k = 0; k < buff.length/sizeof(uint32_t); k++) words[k] = uint32_t(k*2654435761u + i);
         sent.push_back(buff);
     }
 
@@ -93,7 +94,27 @@ static void testLoopback(const std::string &dtype, const std::vector<size_t> &ch
     }
     topology.commit();
 
-    //the source gives only timeouts until the sink writes: wait for the data
+    //the source starts with an empty FIFO: only timeouts, no data, no error
+    std::this_thread::sleep_for(std::chrono::milliseconds(300));
+    for (size_t i = 0; i < channels.size(); i++)
+    {
+        POTHOS_TEST_EQUAL(collectors[i].call<Pothos::BufferChunk>("getBuffer").elements(), 0);
+    }
+
+    //two halves with an empty FIFO between them
+    for (size_t half = 0; half < 2; half++)
+    {
+        for (size_t i = 0; i < channels.size(); i++)
+        {
+            auto part = sent[i];
+            part.length /= 2;
+            part.address += half*part.length;
+            feeders[i].call("feedBuffer", part);
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
+    }
+
+    //wait for the data
     const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
     for (size_t i = 0; i < channels.size(); i++)
     {
