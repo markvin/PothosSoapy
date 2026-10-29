@@ -137,7 +137,7 @@ void SoapyBlock::evalThreadLoop(void)
         }
         POTHOS_EXCEPTION_CATCH (const Pothos::Exception &ex)
         {
-            poco_error_f2(_logger, "call %s threw: %s", current.first, ex.displayText());
+            POTHOS_LOG_ERROR("SoapyBlock", "call {} threw: {}", current.first, ex.displayText());
             argsLock.lock(); //re-lock to set exception
             _evalError = std::current_exception();
             _evalErrorValid = true;

@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: BSL-1.0
 
 #include <Pothos/Framework.hpp>
-#include <Poco/Logger.h>
+#include <Pothos/System/Logger.hpp>
+#include <cstring>
 #include <iostream>
 #include <chrono>
 #include <algorithm> //min/max
@@ -153,7 +154,7 @@ void DemoController::work(void)
         else if (label.id == "rxRate")
         {
             _lastKnownRxRate = label.data.convert<double>();
-            poco_notice_f1(Poco::Logger::get("DemoController"), "RX rate is %s Msps",
+            POTHOS_LOG_NOTICE("DemoController", "RX rate is {} Msps",
                 std::to_string(_lastKnownRxRate/1e6));
         }
         else if (label.id == "rxEnd")
@@ -162,7 +163,7 @@ void DemoController::work(void)
         }
     }
 
-    poco_notice_f2(Poco::Logger::get("DemoController"), "Got %s RX elements @ %s seconds",
+    POTHOS_LOG_NOTICE("DemoController", "Got {} RX elements @ {} seconds",
         std::to_string(inputPort->elements()),
         std::to_string(this->getStreamElementTime(inputPort->totalElements())/1e9));
 

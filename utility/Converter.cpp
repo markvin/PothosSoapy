@@ -4,8 +4,8 @@
 #include <Pothos/Exception.hpp>
 #include <Pothos/Framework.hpp>
 #include <SoapySDR/ConverterRegistry.hpp>
-#include <Poco/Format.h>
 #include <algorithm>
+#include <format>
 #include <iostream>
 #include <unordered_map>
 
@@ -97,8 +97,8 @@ public:
         {
             throw Pothos::InvalidArgumentException(
                       "No Soapy SDR converter is registered for the given types",
-                      Poco::format(
-                          "%s -> %s",
+                      std::format(
+                          "{} -> {}",
                           inputDType.name(),
                           outputDType.name()));
         }

@@ -4,7 +4,7 @@
 #include <Pothos/Framework.hpp>
 #include <Pothos/Object/Containers.hpp>
 #include <SoapySDR/Device.hpp>
-#include <Poco/Logger.h>
+#include <Pothos/System/Logger.hpp>
 #include <thread>
 #include <mutex>
 #include <atomic>
@@ -273,8 +273,6 @@ private:
     }
 
 protected:
-    Poco::Logger &_logger;
-
     bool isReady(void);
     void emitActivationSignals(void);
 
