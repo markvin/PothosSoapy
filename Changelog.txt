@@ -13,6 +13,7 @@ Release 0.6.0 (pending)
 - Add the optional device test soapy.device (-DSOAPY_TEST_DEVICE=...)
 - Add CI for Linux, macOS and Windows
 - Remove the debian packaging
+- The self-tests unset the POTHOS_* variables of a developer shell
 
 Release 0.5.1 (2020-07-19)
 ==========================
