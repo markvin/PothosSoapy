@@ -1,8 +1,9 @@
 This this the changelog file for the Pothos SoapySDR toolkit.
 
-Release 0.6.0 (pending)
+Release 0.6.0 (2026-10-31)
 ==========================
 
+- Needs the Pothos core 2.0.0 (the pothos2 line, ABI 2.0-0)
 - Port to the modernized Pothos core (branch pothos2)
 - Remove Poco: the SoapySDR log goes to the Pothos logger, std::format
 - SoapySDR 0.8 or higher; a missing SoapySDR or nlohmann_json stops the configure step
